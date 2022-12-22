@@ -1,4 +1,5 @@
 import itertools
+import pickle
 
 import cv2
 from skimage.metrics import peak_signal_noise_ratio
@@ -43,11 +44,11 @@ def bilateralFilter(noise_image):
     denoised = cv2.bilateralFilter(noise_image,5,20,20)
     return denoised
 
-def bm3d_dn(image):
+def bm3d_dn(image, sigma_psd = 0.08 * 255):
     image_ycbcr = color.rgb2ycbcr(image)
 
     # Denoise the Y channel using BM3D
-    denoised_y = bm3d(image_ycbcr[:, :, 0], sigma_psd = 0.08 * 255)
+    denoised_y = bm3d(image_ycbcr[:, :, 0], sigma_psd = sigma_psd)
 
     # Reconstruct the denoised image in the RGB color space
     denoised_image = color.ycbcr2rgb(np.dstack((denoised_y, image_ycbcr[:, :, 1], image_ycbcr[:, :, 2])))
@@ -61,10 +62,13 @@ def wavelet(image):
     cA, (cH, cV, cD) = coeffs
 
     # Threshold the coefficients to suppress the noise
-    threshold = np.median(np.abs(cH)) / 0.6745
+    threshold = np.median(np.abs(cH)) / 0.01
     cH[np.abs(cH) < threshold] = 0
     cV[np.abs(cV) < threshold] = 0
     cD[np.abs(cD) < threshold] = 0
+    cH[:] = 0
+    cV[:] = 0
+    cD[:] = 0
 
     # Reconstruct the denoised image
     denoised_y = idwt2((cA, (cH, cV, cD)), 'db1')
@@ -73,7 +77,37 @@ def wavelet(image):
     denoised_image = color.ycbcr2rgb(np.dstack((denoised_y, image_ycbcr[:, :, 1], image_ycbcr[:, :, 2])))
     return denoised_image
 
-def process_one_image_pair(image_name,clean_folder,noise_folder,clean_t,noise_t):
+def process_one_image_pair(image_name,clean_folder,noise_folder,clean_t,noise_t, severity=1):
+
+    cur_clean_image_path = os.path.join(clean_folder,image_name)
+    cur_clean_image = Image.open(cur_clean_image_path)
+    cur_clean_image=np.array(clean_t(cur_clean_image))
+    cur_clean_image=cv2.cvtColor(cur_clean_image,cv2.COLOR_RGB2BGR)
+
+    cur_noise_image_path = os.path.join(noise_folder, image_name)
+    cur_noise_image = Image.open(cur_noise_image_path)
+    cur_noise_image = np.array(noise_t(cur_noise_image))
+    cur_noise_image=cv2.cvtColor(cur_noise_image,cv2.COLOR_RGB2BGR)
+    # bgr1 = cv2.split(cur_clean_image)
+    # bgr2 = cv2.split(cur_noise_image)
+    # for one_channel in range(3):
+    #     denoised_image = filtering(bgr2[one_channel])
+    #     tmp_psnr = cal_psnr(bgr1[one_channel], denoised_image)
+    #     tmp_res.append(tmp_psnr)
+    # return np.mean(tmp_res)
+    # denoised_image00 = medianBlur(cur_noise_image)
+    # denoised_image01 = GaussianBlur(cur_noise_image)
+    # denoised_image02 = bilateralFilter(cur_noise_image)
+    # denoised_image2 = wavelet(cur_noise_image)
+    sigma_psd = [.08, .12, .18, .26,  .38][severity - 1] * 255
+    denoised_image = bm3d(cur_noise_image, sigma_psd=sigma_psd).astype(np.uint8)
+
+    tmp_psnr = cal_psnr(cur_clean_image,denoised_image)
+
+    return tmp_psnr
+
+
+def process_one_image_pair_debug(image_name,clean_folder,noise_folder,clean_t,noise_t, severity=1):
     tmp_res = []
 
     cur_clean_image_path = os.path.join(clean_folder,image_name)
@@ -93,19 +127,55 @@ def process_one_image_pair(image_name,clean_folder,noise_folder,clean_t,noise_t)
     #     tmp_res.append(tmp_psnr)
     # return np.mean(tmp_res)
     denoised_image00 = medianBlur(cur_noise_image)
-    denoised_image01 = GaussianBlur(cur_clean_image)
-    denoised_image02 = bilateralFilter(cur_clean_image)
+    denoised_image01 = GaussianBlur(cur_noise_image)
+    denoised_image02 = bilateralFilter(cur_noise_image)
     denoised_image2 = wavelet(cur_noise_image)
-    denoised_image3 = bm3d(cur_noise_image, sigma_psd=0.08 * 255)
-    # denoised_image3 = bm3d_dn(cur_noise_image)
+    sigma_psd = [.08, .12, .18, .26,  .38][severity - 1] * 255
+    denoised_image3 = bm3d(cur_noise_image, sigma_psd=sigma_psd)
+    # denoised_image3 = bm3d_dn(cur_noise_image, sigma_psd=sigma_psd)
     # denoised_image = bm3d(cur_noise_image, sigma_psd = np.mean(np.abs(cur_noise_image - np.median(cur_noise_image))) / 0.6745)
     tmp_psnr00 = cal_psnr(cur_clean_image,denoised_image00)
+    img_pair00 = np.hstack([cur_clean_image, cur_noise_image, denoised_image00])
+    # cv2.imshow("medianBlur", img_pair00)
+    img_pair00 = Image.fromarray(np.uint8(img_pair00))
+    img_pair00.show()
     tmp_psnr01 = cal_psnr(cur_clean_image,denoised_image01)
+    img_pair01 = np.hstack([cur_clean_image, cur_noise_image, denoised_image01])
+    img_pair01 = Image.fromarray(np.uint8(img_pair01))
+    img_pair01.show()
     tmp_psnr02 = cal_psnr(cur_clean_image,denoised_image02)
+    img_pair02 = np.hstack([cur_clean_image, cur_noise_image, denoised_image02])
+    img_pair02 = Image.fromarray(np.uint8(img_pair02))
+    img_pair02.show()
     tmp_psnr2 = cal_psnr(cur_clean_image / 256,denoised_image2)
+    img_pair2 = np.hstack([cur_clean_image, cur_noise_image, denoised_image2 * 256])
+    img_pair2 = Image.fromarray(np.uint8(img_pair2))
+    img_pair2.show()
     tmp_psnr3 = cal_psnr(cur_clean_image / 256,denoised_image3 / 256)
-    tmp_psnr4 = cal_psnr(cur_clean_image / 256,cur_noise_image / 256)
-    return tmp_psnr
+    img_pair3 = np.hstack([cur_clean_image, cur_noise_image, denoised_image3])
+    img_pair3 = Image.fromarray(np.uint8(img_pair3))
+    img_pair3.show()
+    tmp_psnr4 = cal_psnr(cur_clean_image / 256, cur_noise_image / 256)
+    # img_pair5 = np.hstack([cur_clean_image, cur_noise_image])
+    # cv2.imshow("medianBlur", img_pair5)
+    return tmp_psnr3
+
+def test_and_debug(noise_type=1, noise_level = '5'):
+    i = noise_type
+    severity = noise_level
+    clean_t = F.Compose([
+        F.Resize(256),
+        F.CenterCrop(224),
+        F.Resize(256)
+    ])
+    noise_t = F.Compose([
+        F.Resize(256),
+    ])
+    cate_list = sorted(os.listdir(os.path.join(noise_path[i], severity)))
+    noise_images = sorted(os.listdir(os.path.join(noise_path[i], severity, cate_list[0])))
+    noise_folder = os.path.join(noise_path[i], severity, cate_list[0])
+    clean_folder = os.path.join(clean_path,cate_list[0])
+    process_one_image_pair_debug(noise_images[2],clean_folder,noise_folder,clean_t,noise_t, severity=int(severity))
 
 def main():
     # clean_cate_list = sorted(os.listdir(clean_path))
@@ -136,12 +206,8 @@ def main():
         F.Resize(256),
     ])
 
-    i = 1
-    cate_list = sorted(os.listdir(os.path.join(noise_path[i], '1')))
-    noise_images = sorted(os.listdir(os.path.join(noise_path[i], '1', cate_list[0])))
-    noise_folder = os.path.join(noise_path[i], '1', cate_list[0])
-    clean_folder = os.path.join(clean_path,cate_list[0])
-    process_one_image_pair(noise_images[2],clean_folder,noise_folder,clean_t,noise_t)
+
+
     parallel_worker = Pool(processes=4)
     for one_noise_type in noise_path:
         print(f"Processing {one_noise_type}")
@@ -153,14 +219,23 @@ def main():
             start_time = time.time()
             for one_cate in tqdm(cate_list):
                 noise_images = sorted(os.listdir(os.path.join(one_noise_type, str(one_level), one_cate)))
-                partial_job = partial(process_one_image_pair, clean_folder=os.path.join(clean_path,one_cate), noise_folder=os.path.join(one_noise_type,str(one_level),one_cate),clean_t=clean_t,noise_t=noise_t)
+                partial_job = partial(process_one_image_pair, clean_folder=os.path.join(clean_path,one_cate), noise_folder=os.path.join(one_noise_type,str(one_level),one_cate),clean_t=clean_t,noise_t=noise_t, severity=one_level)
                 # partial_job = process_one_image_pair(clean_folder=os.path.join(clean_path,one_cate), noise_folder=os.path.join(one_noise_type,str(one_level),one_cate),clean_t=clean_t,noise_t=noise_t)
                 batch_res = parallel_worker.map(partial_job, noise_images)
+                # batch_res = []
+                # for noise_image in tqdm(noise_images):
+                    # mtc = process_one_image_pair(image_name=noise_image,clean_folder=os.path.join(clean_path,one_cate), noise_folder=os.path.join(one_noise_type,str(one_level),one_cate),clean_t=clean_t,noise_t=noise_t, severity=one_level)
+                    # batch_res.append(mtc)
                 tmp_metric = np.mean(batch_res)
                 res[one_noise_type][one_level].append(tmp_metric)
+                # if k % 10 == 0:
+                #     print(f"{k}")
+                print(f"PSNR: {tmp_metric}")
+                with open("psnr_results.pkl", "wb") as f:
+                    pickle.dump(res, f)
             end_time = time.time()
-            print(f"PSNR: {tmp_metric}")
             print("process time: ", end_time-start_time)
+
     for one_noise_type in res.keys():
         final[one_noise_type]={}
         for one_level in res[one_noise_type].keys():
