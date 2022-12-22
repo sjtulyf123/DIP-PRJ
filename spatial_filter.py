@@ -66,7 +66,7 @@ def main():
                     else:
                         raise ValueError
         print("success")
-
+                
     # process data and calculate metric
     clean_t = F.Compose([
         F.Resize(256),
