@@ -13,7 +13,7 @@ from PIL import Image
 from skimage import color
 from pywt import dwt2, idwt2
 from tqdm import tqdm
-from bm3d_denoising import bm3d
+from bm3d import bm3d
 import cv2
 
 noise_path = ["../gaussian_noise","../impulse_noise","../shot_noise"]
