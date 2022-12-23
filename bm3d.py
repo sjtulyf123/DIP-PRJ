@@ -14,9 +14,12 @@ from skimage import color
 from pywt import dwt2, idwt2
 from tqdm import tqdm
 from bm3d import bm3d
+import cv2
 
 noise_path = ["../gaussian_noise","../impulse_noise","../shot_noise"]
-noise_level = [1,2,3,4,5]
+# noise_level = [1,2,3,4,5]
+noise_level = [5]
+processor_num = 4
 clean_path = "../val"
 ckp = False
 
@@ -29,6 +32,11 @@ def medianBlur(noise_image):
     # denoised = cv2.GaussianBlur(noise_image,(3,3),0)
     # denoised = cv2.bilateralFilter(noise_image,5,20,20)
     return denoised
+
+def nl_denoising(noise_image, h = 25, templateWS = 7, searchWS = 21):
+    denoised_img = cv2.fastNlMeansDenoisingColored(noise_image, None, h, h, templateWS, searchWS)
+    # denoised_img = cv2.fastNlMeansDenoisingColored(noise_image)
+    return denoised_img
 
 def GaussianBlur(noise_image):
     # denoised = cv2.medianBlur(noise_image,3)
@@ -66,9 +74,9 @@ def wavelet(image):
     cH[np.abs(cH) < threshold] = 0
     cV[np.abs(cV) < threshold] = 0
     cD[np.abs(cD) < threshold] = 0
-    cH[:] = 0
-    cV[:] = 0
-    cD[:] = 0
+    # cH[:] = 0
+    # cV[:] = 0
+    # cD[:] = 0
 
     # Reconstruct the denoised image
     denoised_y = idwt2((cA, (cH, cV, cD)), 'db1')
@@ -101,6 +109,7 @@ def process_one_image_pair(image_name,clean_folder,noise_folder,clean_t,noise_t,
     # denoised_image2 = wavelet(cur_noise_image)
     sigma_psd = [.08, .12, .18, .26,  .38][severity - 1] * 255
     denoised_image = bm3d(cur_noise_image, sigma_psd=sigma_psd).astype(np.uint8)
+    # denoised_image = nl_denoising(cur_noise_image)
 
     tmp_psnr = cal_psnr(cur_clean_image,denoised_image)
 
@@ -132,6 +141,7 @@ def process_one_image_pair_debug(image_name,clean_folder,noise_folder,clean_t,no
     denoised_image2 = wavelet(cur_noise_image)
     sigma_psd = [.08, .12, .18, .26,  .38][severity - 1] * 255
     denoised_image3 = bm3d(cur_noise_image, sigma_psd=sigma_psd)
+    denoised_image4 = nl_denoising(cur_noise_image, h=25)
     # denoised_image3 = bm3d_dn(cur_noise_image, sigma_psd=sigma_psd)
     # denoised_image = bm3d(cur_noise_image, sigma_psd = np.mean(np.abs(cur_noise_image - np.median(cur_noise_image))) / 0.6745)
     tmp_psnr00 = cal_psnr(cur_clean_image,denoised_image00)
@@ -155,12 +165,15 @@ def process_one_image_pair_debug(image_name,clean_folder,noise_folder,clean_t,no
     img_pair3 = np.hstack([cur_clean_image, cur_noise_image, denoised_image3])
     img_pair3 = Image.fromarray(np.uint8(img_pair3))
     img_pair3.show()
-    tmp_psnr4 = cal_psnr(cur_clean_image / 256, cur_noise_image / 256)
+    tmp_psnr4 = cal_psnr(cur_clean_image, denoised_image4)
+    img_pair4 = np.hstack([cur_clean_image, cur_noise_image, denoised_image4])
+    img_pair4 = Image.fromarray(np.uint8(img_pair4))
+    img_pair4.show()
     # img_pair5 = np.hstack([cur_clean_image, cur_noise_image])
     # cv2.imshow("medianBlur", img_pair5)
     return tmp_psnr3
 
-def test_and_debug(noise_type=1, noise_level = '5'):
+def test_and_debug(noise_type=1, noise_level = '5', image_num = 0):
     i = noise_type
     severity = noise_level
     clean_t = F.Compose([
@@ -175,12 +188,14 @@ def test_and_debug(noise_type=1, noise_level = '5'):
     noise_images = sorted(os.listdir(os.path.join(noise_path[i], severity, cate_list[0])))
     noise_folder = os.path.join(noise_path[i], severity, cate_list[0])
     clean_folder = os.path.join(clean_path,cate_list[0])
-    process_one_image_pair_debug(noise_images[2],clean_folder,noise_folder,clean_t,noise_t, severity=int(severity))
+    process_one_image_pair_debug(noise_images[image_num],clean_folder,noise_folder,clean_t,noise_t, severity=int(severity))
 
 def main():
     # clean_cate_list = sorted(os.listdir(clean_path))
     res = {}
     final = {}
+    denoising_type = "bm3d"
+
 
     # check whether one noise image corresponds to one original image
     # if ckp:
@@ -206,9 +221,9 @@ def main():
         F.Resize(256),
     ])
 
+    # test_and_debug(image_num=10)
 
-
-    parallel_worker = Pool(processes=4)
+    parallel_worker = Pool(processes=processor_num)
     for one_noise_type in noise_path:
         print(f"Processing {one_noise_type}")
         res[one_noise_type] = {}
@@ -216,7 +231,7 @@ def main():
             print(f"Noise Level {one_level}")
             res[one_noise_type][one_level] = []
             cate_list = sorted(os.listdir(os.path.join(one_noise_type, str(one_level))))
-            start_time = time.time()
+            # start_time = time.time()
             for one_cate in tqdm(cate_list):
                 noise_images = sorted(os.listdir(os.path.join(one_noise_type, str(one_level), one_cate)))
                 partial_job = partial(process_one_image_pair, clean_folder=os.path.join(clean_path,one_cate), noise_folder=os.path.join(one_noise_type,str(one_level),one_cate),clean_t=clean_t,noise_t=noise_t, severity=one_level)
@@ -231,10 +246,10 @@ def main():
                 # if k % 10 == 0:
                 #     print(f"{k}")
                 print(f"PSNR: {tmp_metric}")
-                with open("psnr_results.pkl", "wb") as f:
+                with open(f"psnr_results_{denoising_type}.pkl", "wb") as f:
                     pickle.dump(res, f)
-            end_time = time.time()
-            print("process time: ", end_time-start_time)
+            # end_time = time.time()
+            # print("process time: ", end_time-start_time)
 
     for one_noise_type in res.keys():
         final[one_noise_type]={}
