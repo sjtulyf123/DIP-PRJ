@@ -54,15 +54,15 @@ def bilateralFilter(noise_image):
     denoised = cv2.bilateralFilter(noise_image,5,20,20)
     return denoised
 
-def draw_imggrid(imgs, rows, cols, x_labels):
-    fig, axs = plt.subplots(rows, cols)
-    for i, (img, lb) in enumerate(zip(imgs,x_labels)):
-        row = i / cols
+def draw_imggrid(imgs, rows, cols, titles):
+    fig, axs = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
+    for i, (img, lb) in enumerate(zip(imgs,titles)):
+        row = i // cols
         col = i % cols
         axs[row][col].imshow(img)
+        axs[row][col].set_title(lb)
         axs[row][col].set_axis_off()
-        axs.set_xlabel(lb)
-    fig.show()
+    fig.savefig("tmp.png")
 
 
 def draw_denoising(image_name,clean_folder,noise_folder,clean_t,noise_t, severity=1):
@@ -83,7 +83,7 @@ def draw_denoising(image_name,clean_folder,noise_folder,clean_t,noise_t, severit
     denoised_imag_gaussian = GaussianBlur(cur_noise_image)
     denoised_image_bil = bilateralFilter(cur_noise_image)
     sigma_psd = [.08, .12, .18, .26,  .38][severity - 1] * 255
-    denoised_image_bm3d = bm3d(cur_noise_image, sigma_psd=sigma_psd)
+    denoised_image_bm3d = bm3d(cur_noise_image, sigma_psd=sigma_psd).astype(np.uint8)
     denoised_image_nl = nl_denoising(cur_noise_image, h=25)
 
     denoised_image_variational = np.zeros_like(cur_clean_image)
@@ -94,12 +94,12 @@ def draw_denoising(image_name,clean_folder,noise_folder,clean_t,noise_t, severit
         denoised_image_bil, denoised_image_variational, 
         denoised_image_wavelet, denoised_image_nl, denoised_image_bm3d]
     
-    x_labels = [
+    titles = [
         "Clean", "Gaussian Noise", "Mean", "Median", 
         "Gaussian", "Bilateral", "Variational", "Wavelet", "NLMean", "BM3D"
     ]
 
-    draw_imggrid(imgs, 2, 5, x_labels)
+    draw_imggrid(imgs, 2, 5, titles)
 
     # img_row1 = np.hstack([cur_clean_image, cur_noise_image, 
     #     denoised_image_mean,denoised_image_median,denoised_imag_gaussian])
