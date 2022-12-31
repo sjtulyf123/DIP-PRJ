@@ -55,6 +55,7 @@ def bilateralFilter(noise_image):
     return denoised
 
 def draw_imggrid(imgs, rows, cols, titles):
+    plt.tight_layout()
     fig, axs = plt.subplots(rows, cols, figsize=(cols * 4, rows * 4))
     for i, (img, lb) in enumerate(zip(imgs,titles)):
         row = i // cols
@@ -62,7 +63,8 @@ def draw_imggrid(imgs, rows, cols, titles):
         axs[row][col].imshow(img)
         axs[row][col].set_title(lb)
         axs[row][col].set_axis_off()
-    fig.savefig("tmp.png")
+
+    fig.savefig("comp.png", bbox_inches="tight")
 
 
 def draw_denoising(image_name,clean_folder,noise_folder,clean_t,noise_t, severity=1):
