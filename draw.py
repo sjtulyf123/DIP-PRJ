@@ -16,7 +16,8 @@ from tqdm import tqdm
 from bm3d import bm3d
 import cv2
 import matplotlib.pyplot as plt
-
+from skimage.restoration import denoise_tv_chambolle
+from skimage.restoration import denoise_wavelet
 
 noise_path = ["../gaussian_noise","../impulse_noise","../shot_noise"]
 # noise_level = [1,2,3,4,5]
@@ -88,27 +89,28 @@ def draw_denoising(image_name,clean_folder,noise_folder,clean_t,noise_t, severit
     denoised_image_bm3d = bm3d(cur_noise_image, sigma_psd=sigma_psd).astype(np.uint8)
     denoised_image_nl = nl_denoising(cur_noise_image, h=25)
 
-    denoised_image_variational = np.zeros_like(cur_clean_image)
-    denoised_image_wavelet = np.zeros_like(cur_clean_image)
+    denoised_image_variational = denoise_tv_chambolle(cur_noise_image, weight=0.5, multichannel=True)
+    denoised_image_wavelet = denoise_wavelet(cur_noise_image, multichannel=True)
 
-    imgs = [cur_clean_image, cur_noise_image, 
+    imgs = [cur_clean_image, cur_noise_image,
         denoised_image_mean,denoised_image_median,denoised_imag_gaussian,
-        denoised_image_bil, denoised_image_variational, 
+        denoised_image_bil, denoised_image_variational,
         denoised_image_wavelet, denoised_image_nl, denoised_image_bm3d]
-    
+
     titles = [
-        "Clean", "Gaussian Noise", "Mean", "Median", 
+        "Clean", "Gaussian Noise", "Mean", "Median",
         "Gaussian", "Bilateral", "Variational", "Wavelet", "NLMean", "BM3D"
     ]
 
+
     draw_imggrid(imgs, 2, 5, titles)
 
-    # img_row1 = np.hstack([cur_clean_image, cur_noise_image, 
+    # img_row1 = np.hstack([cur_clean_image, cur_noise_image,
     #     denoised_image_mean,denoised_image_median,denoised_imag_gaussian])
-        
-    # img_row2 = np.hstack([denoised_image_bil, denoised_image_variational, 
+
+    # img_row2 = np.hstack([denoised_image_bil, denoised_image_variational,
     #     denoised_image_wavelet, denoised_image_nl, denoised_image_bm3d])
-    
+
 
     # img_pair_all = Image.fromarray(np.uint8(img_pair_all))
     # img_pair_all.show()
