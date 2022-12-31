@@ -12,8 +12,8 @@ from PIL import Image
 
 noise_path = ["../gaussian_noise","../impulse_noise","../shot_noise"]
 noise_level = [1,2,3,4,5]
-clean_path = "../imagenet/val"
-ckp = False
+clean_path = "../val"
+ckp = True
 
 def cal_psnr(clean_image, denoise_image):
     return peak_signal_noise_ratio(clean_image,denoise_image)
